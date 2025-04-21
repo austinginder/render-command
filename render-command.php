@@ -2,8 +2,8 @@
 /*
  * Plugin Name:       Render Command
  * Plugin URI:        https://github.com/austinginder/render-command
- * Description:       WP-CLI command to render HTML for a WordPress URL path. Use --without-plugins flag to exclude plugins from the request.
- * Version:           1.0.0
+ * Description:       WP-CLI command to render HTML for a WordPress URL path. Use --without-plugins flag (optionally with a list) to exclude plugins.
+ * Version:           1.1.0
  * Author:            Austin Ginder
  * Author URI:        https://austinginder.com
  * License:           MIT

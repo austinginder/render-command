@@ -69,5 +69,16 @@ Contributions are welcome! Please submit issues or pull requests on the [GitHub 
 
 ## Changelog
 
-### 1.0.0
+### 1.1.0 - 2025-04-21
+- **Added `--without-plugins` flag without value** to exclude all plugins for the request (e.g., `wp render "/" --without-plugins`).
+- **Introduced `--format` option** to control output format:
+  - `raw` (default): Outputs the full HTML response.
+  - `http_code`: Outputs only the HTTP status code (e.g., `200`, `404`).
+- **Added request timeout**:
+  - Set a 120-second timeout for `wp_remote_get` to handle slow responses.
+  - Disabled SSL verification (`sslverify => false`) for flexibility in local or testing environments.
+
+### 1.0.0 - 2025-04-20
 - Initial release with `wp render` command and plugin exclusion functionality.
+- Added --without-plugins=<plugins> flag for excluding specific plugins via comma-separated slugs.
+- Implemented MU-plugin for handling exclusion logic based on exclude_plugins and exclusion_token query parameters.

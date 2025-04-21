@@ -10,13 +10,11 @@ When activated, the plugin creates a must-use (mu-plugin) file to handle plugin 
 
 ## Installation
 
-1. Download the plugin from [GitHub](https://github.com/austinginder/render-command).
-2. Place the plugin folder in your WordPress `/wp-content/plugins/` directory.
-3. Activate the plugin via the WordPress admin panel or using WP-CLI:
-   ```bash
-   wp plugin activate render-command
-   ```
-4. Ensure WP-CLI is installed and configured on your server.
+Download the plugin from [GitHub](https://github.com/austinginder/render-command/releases/latest/download/render-command.zip) or install and activate using WP-CLI:
+
+```bash
+wp plugin install https://github.com/austinginder/render-command/releases/latest/download/render-command.zip --activate
+```
 
 ## Usage
 

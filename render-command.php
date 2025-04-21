@@ -10,12 +10,14 @@
  * License URI:       https://opensource.org/licenses/MIT
  * Text Domain:       render-command
  *
- * Usage: wp render <url> [--without-plugins=<plugins>]
+ * Usage: wp render <url> [--without-plugins=<plugins>] [--format=<format>]
  * Example: wp render "/" --without-plugins="jetpack,wordpress-seo"
+ * Example: wp render "/contact" --format=http_code
  */
 
 namespace WP_CLI\RenderCommand;
 use WP_CLI;
+use WP_CLI\Utils;
 use function register_activation_hook;
 use function register_deactivation_hook;
 
@@ -86,8 +88,6 @@ function handle_render_command_plugin_exclusion_logic( $plugins ) {
             // Check if the plugin path contains the slug
             if ( strpos( $plugin_path, $slug . '/' ) === 0 || strpos( $plugin_path, '/' . $slug . '/' ) !== false ) {
                 $exclude = true;
-                // Optionally log which plugin is being excluded
-                error_log( 'Excluding plugin: ' . $plugin_path . ' based on slug: ' . $slug );
                 break; // No need to check other slugs for this plugin
             }
         }
@@ -125,7 +125,7 @@ function deactivate() {
 class RenderCommand {
 
     /**
-     * Render a WordPress page and output the raw HTML.
+     * Render a WordPress page and output the result based on format.
      *
      * ## OPTIONS
      *
@@ -134,11 +134,27 @@ class RenderCommand {
      *
      * [--without-plugins=<plugins>]
      * : A comma-separated list of plugins to exclude for the request
-     *   (e.g., "jetpack,wordpress-seo"). Requires a valid --exclusion-token.
+     *   (e.g., "jetpack,wordpress-seo"). Requires a valid AUTH_SALT.
+     *
+     * [--format=<format>]
+     * : Determine the output format.
+     *   ---
+     *   default: raw
+     *   options:
+     *     - raw
+     *     - http_code
+     *   ---
      *
      * ## EXAMPLES
      *
+     *     # Get raw HTML for the homepage
+     *     wp render "/"
+     *
+     *     # Get raw HTML for /about-us/ excluding jetpack and wordpress-seo
      *     wp render "/about-us/" --without-plugins="jetpack,wordpress-seo"
+     *
+     *     # Get only the HTTP status code for /contact
+     *     wp render "/contact" --format=http_code
      *
      * @param array $args      Positional arguments.
      * @param array $assoc_args Associative arguments.
@@ -150,35 +166,56 @@ class RenderCommand {
 
         $path = $args[0];
         $plugins_to_exclude = [];
+        $expected_token = null;
 
-        // Check for --without-plugins and validate token
+        // Check for --without-plugins
         if ( isset( $assoc_args['without-plugins'] ) ) {
             $expected_token = generate_exclusion_token();
             $plugins_to_exclude = explode( ',', $assoc_args['without-plugins'] );
         }
 
+        // Get the format, default to 'raw'
+        $format = Utils\get_flag_value( $assoc_args, 'format', 'raw' );
+
+        // Validate format
+        if ( ! in_array( $format, [ 'raw', 'http_code' ] ) ) {
+            WP_CLI::error( "Invalid format specified. Available formats: 'raw', 'http_code'." );
+        }
+
         // Build the full URL with query parameters if needed
         $url = site_url( $path );
-        if ( ! empty( $plugins_to_exclude ) ) {
+        if ( ! empty( $plugins_to_exclude ) && $expected_token ) {
             $query_param = http_build_query( [
                 'exclude_plugins' => implode( ',', $plugins_to_exclude ),
                 'exclusion_token' => $expected_token,
             ] );
-            $url = $url . "?" . $query_param;
+            // Ensure proper URL construction whether path has query string or not
+            $url .= ( parse_url( $url, PHP_URL_QUERY ) ? '&' : '?' ) . $query_param;
             WP_CLI::log( 'Requesting URL with plugin exclusion: ' . $url );
+        } else {
+             WP_CLI::log( 'Requesting URL: ' . $url );
         }
 
         // Make the request
-        $response = wp_remote_get( $url );
+        $response = wp_remote_get( $url, [ 'timeout' => 120 ] );
 
         if ( is_wp_error( $response ) ) {
             WP_CLI::error( $response->get_error_message() );
         }
 
-        $body = wp_remote_retrieve_body( $response );
-
-        // Output the raw HTML
-        WP_CLI::line( $body );
+        // Output based on the requested format
+        if ( 'http_code' === $format ) {
+            $http_code = wp_remote_retrieve_response_code( $response );
+            if ( $http_code ) {
+                WP_CLI::line( (string) $http_code ); // Cast to string for output
+            } else {
+                // This case is unlikely if no WP_Error occurred, but good practice
+                WP_CLI::warning( 'Could not retrieve HTTP status code, although the request seemed successful.' );
+            }
+        } else { // Default to 'raw' format
+            $body = wp_remote_retrieve_body( $response );
+            WP_CLI::line( $body );
+        }
     }
 
 }

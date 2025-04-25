@@ -2,19 +2,20 @@
 /*
  * Plugin Name:       Render Command
  * Plugin URI:        https://github.com/austinginder/render-command
- * Description:       WP-CLI command to render HTML for a WordPress URL path. Use --without-plugins flag (optionally with a list) to exclude plugins.
- * Version:           1.1.0
+ * Description:       WP-CLI command to render HTML for a WordPress URL path. Use --without-plugins flag (optionally with a list) to exclude plugins. Use --link to output the generated URL instead of making a request.
+ * Version:           1.2.0
  * Author:            Austin Ginder
  * Author URI:        https://austinginder.com
  * License:           MIT
  * License URI:       https://opensource.org/licenses/MIT
  * Text Domain:       render-command
  *
- * Usage: wp render <url> [--without-plugins[=<plugins>]] [--format=<format>]
+ * Usage: wp render <url> [--without-plugins[=<plugins>]] [--format=<format>] [--link]
  * Example: wp render "/"
  * Example: wp render "/about/" --without-plugins
  * Example: wp render "/contact" --without-plugins="jetpack,wordpress-seo"
  * Example: wp render "/shop" --format=http_code
+ * Example: wp render "/products" --without-plugins --link
  */
 
 namespace WP_CLI\RenderCommand;
@@ -165,7 +166,6 @@ PHP;
     }
 }
 
-
 /**
  * Function to run on plugin deactivation.
  * Removes the mu-plugin file.
@@ -183,7 +183,7 @@ function deactivate() {
 class RenderCommand {
 
     /**
-     * Render a WordPress page and output the result based on format.
+     * Render a WordPress page or output the URL that would be requested.
      *
      * ## OPTIONS
      *
@@ -195,15 +195,20 @@ class RenderCommand {
      *   all plugins are excluded. If a comma-separated list of plugin slugs
      *   is provided (e.g., "jetpack,wordpress-seo"), only those specific plugins
      *   are excluded. Requires a valid AUTH_SALT defined in wp-config.php.
+     *   This option modifies the URL generated when used with --link.
      *
      * [--format=<format>]
-     * : Determine the output format.
+     * : Determine the output format when making the request (ignored if --link is used).
      *   ---
      *   default: raw
      *   options:
      *     - raw
      *     - http_code
      *   ---
+     *
+     * [--link]
+     * : If present, output the generated URL (including any exclusion parameters)
+     *   instead of making the HTTP request.
      *
      * ## EXAMPLES
      *
@@ -219,6 +224,12 @@ class RenderCommand {
      *     # Get only the HTTP status code for /contact excluding ALL plugins
      *     wp render "/contact" --without-plugins --format=http_code
      *
+     *     # Output the URL for /shop excluding all plugins, without making a request
+     *     wp render "/shop" --without-plugins --link
+     *
+     *     # Output the URL for the homepage, without making a request
+     *     wp render "/" --link
+     *
      * @when after_wp_load
      *
      * @param array $args      Positional arguments.
@@ -232,6 +243,7 @@ class RenderCommand {
         $path = $args[0];
         // Use get_flag_value to handle flag presence and value correctly
         $without_plugins_value = Utils\get_flag_value( $assoc_args, 'without-plugins', null );
+        $link_only = Utils\get_flag_value( $assoc_args, 'link', false ); // Check for --link flag
         $plugins_to_exclude_param = null; // The value for the 'exclude_plugins' query parameter
         $expected_token = null;
 
@@ -247,11 +259,11 @@ class RenderCommand {
             if ( $without_plugins_value === true ) {
                 // Flag is present without a value: exclude all plugins
                 $plugins_to_exclude_param = '__ALL__'; // Special value recognized by mu-plugin
-                WP_CLI::log( 'Requesting URL excluding ALL plugins.' );
+                WP_CLI::log( 'Preparing URL to exclude ALL plugins.' );
             } elseif ( is_string( $without_plugins_value ) && ! empty( $without_plugins_value ) ) {
                 // Flag has a value (list of plugins)
                 $plugins_to_exclude_param = $without_plugins_value; // Pass the list directly
-                 WP_CLI::log( 'Requesting URL excluding specific plugins: ' . $plugins_to_exclude_param );
+                 WP_CLI::log( 'Preparing URL to exclude specific plugins: ' . $plugins_to_exclude_param );
             } else {
                 // Handle edge case: --without-plugins="" (treat as exclude none)
                 WP_CLI::warning( 'Empty value provided for --without-plugins. No plugins will be excluded.' );
@@ -262,8 +274,8 @@ class RenderCommand {
         // Get the format, default to 'raw'
         $format = Utils\get_flag_value( $assoc_args, 'format', 'raw' );
 
-        // Validate format
-        if ( ! in_array( $format, [ 'raw', 'http_code' ] ) ) {
+        // Validate format only if we are not just outputting the link
+        if ( ! $link_only && ! in_array( $format, [ 'raw', 'http_code' ] ) ) {
             WP_CLI::error( "Invalid format specified. Available formats: 'raw', 'http_code'." );
         }
 
@@ -277,10 +289,15 @@ class RenderCommand {
                 'exclusion_token' => $expected_token,
             ];
             $url = add_query_arg( $query_params, $url ); // Use WP function for adding query args
-            WP_CLI::log( 'Requesting URL with exclusion parameters: ' . $url );
-        } else {
-             WP_CLI::log( 'Requesting URL: ' . $url );
+            WP_CLI::log( 'URL includes exclusion parameters.' );
         }
+
+        if ( $link_only ) {
+            WP_CLI::line( $url );
+            return; // Stop execution here
+        }
+
+        WP_CLI::log( 'Requesting URL: ' . $url );
 
         // Make the request
         $response = wp_remote_get( $url, [
